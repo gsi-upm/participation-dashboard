@@ -1,0 +1,201 @@
+{
+  "$schema": "https://vega.github.io/schema/vega/v5.json",
+  "description": "A radar chart example, showing multiple dimensions in a radial layout.",
+  "width": 310,
+  "height": 310,
+  "padding": {"left": 80, "top": 20, "right": 80, "bottom": 20},
+  "autosize": {"type": "none", "contains": "padding"},
+  "signals": [{"name": "radius", "update": "width / 2"}],
+  "config": {
+    "kibana": {
+      // Placement of the Vega-defined signal bindings.
+      // Can be `left`, `right`, `top`, or `bottom` (default).
+      controlsLocation: top
+      // Can be `vertical` or `horizontal` (default).
+      controlsDirection: vertical
+      // If true, hides most of Vega and Vega-Lite warnings
+      hideWarnings: true
+      // Vega renderer to use: `svg` or `canvas` (default)
+      renderer: canvas
+      // Defaults to 'false', restores Vega signal values on refresh
+      restoreSignalValuesOnRefresh: true
+    }
+  },
+  "data": [
+    {
+      "name": "table",
+      "url": {
+        "%context%": true,
+        "index": "somedi",
+        "body": {
+          "size": 0,
+          "aggs": {
+            "buckets": {
+              "composite": {
+              "size": 100,
+                "sources": [
+                  {"key": {"terms": {"field": "radar_drives.key.keyword"}}},
+                  {"category": {"terms": {"field": "Far right.keyword"}}}
+                ]
+              },
+              "aggs": {"sum": {"avg": {"field": "radar_drives.value"}}}
+            }
+          }
+        }
+      },
+      "format": {"property": "aggregations.buckets.buckets"}
+    },
+    {
+      "name": "keys",
+      "source": "table",
+      "transform": [{"type": "aggregate", "groupby": ["key.key"]}]
+    }
+  ],
+  "scales": [
+    {
+      "name": "angular",
+      "type": "point",
+      "range": {"signal": "[-PI, PI]"},
+      "padding": 0.5,
+      "domain": {"data": "table", "field": "key.key"}
+    },
+    {
+      "name": "radial",
+      "type": "linear",
+      "range": {"signal": "[0, radius]"},
+      "zero": true,
+      "nice": false,
+      "domain": {"data": "table", "field": "sum.value"},
+      "domainMin": 0
+    },
+    {
+      "name": "color",
+      "type": "ordinal",
+      "domain": {"data": "table", "field": "key.category"},
+      "range": {"scheme": "category10"}
+    }
+  ],
+  "encode": {"enter": {"x": {"signal": "radius"}, "y": {"signal": "radius"}}},
+  
+   "legends": [
+    {
+      "fill": "color",
+      "title": "Narrative",
+      "orient": "none",
+      "legendX": -120,
+      "legendY": 125,
+      "encode": {
+        "symbols": {"enter": {"fillOpacity": {"value": 0.9}}},
+        "labels": {"update": {"text": {"field": "value"}}}
+      }
+    }
+  ],
+  
+  "marks": [
+    {
+      "type": "group",
+      "name": "categories",
+      "zindex": 1,
+      "from": {
+        "facet": {"data": "table", "name": "facet", "groupby": ["key.category"]}
+      },
+      "marks": [
+        {
+          "type": "line",
+          "name": "category-line",
+          "from": {"data": "facet"},
+          "encode": {
+            "enter": {
+              "interpolate": {"value": "linear-closed"},
+              "x": {
+                "signal": "scale('radial', datum.sum.value) * cos(scale('angular', datum.key.key))"
+              },
+              "y": {
+                "signal": "scale('radial', datum.sum.value) * sin(scale('angular', datum.key.key))"
+              },
+              "stroke": {"scale": "color", "field": "key.category"},
+              "strokeWidth": {"value": 1},
+              "fill": {"scale": "color", "field": "key.category"},
+              "fillOpacity": {"value": 0.3}
+            }
+          }
+        },
+        {
+          "type": "text",
+          "name": "value-text",
+          "from": {"data": "category-line"},
+          "encode": {
+            "enter": {
+              "x": {"signal": "datum.x"},
+              "y": {"signal": "datum.y"},
+              "align": {"value": "center"},
+              "baseline": {"value": "middle"},
+              "fill": {"value": "black"}
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "rule",
+      "name": "radial-grid",
+      "from": {"data": "keys"},
+      "zindex": 0,
+      "encode": {
+        "enter": {
+          "x": {"value": 0},
+          "y": {"value": 0},
+          "x2": {"signal": "radius * cos(scale('angular', datum['key.key']))"},
+          "y2": {"signal": "radius * sin(scale('angular', datum['key.key']))"},
+          "stroke": {"value": "lightgray"},
+          "strokeWidth": {"value": 1}
+        }
+      }
+    },
+    {
+      "type": "text",
+      "name": "key-label",
+      "from": {"data": "keys"},
+      "zindex": 1,
+      "encode": {
+        "enter": {
+          "x": {
+            "signal": "(radius + 5) * cos(scale('angular', datum['key.key']))"
+          },
+          "y": {
+            "signal": "(radius + 5) * sin(scale('angular', datum['key.key']))"
+          },
+          "text": {"field": "key\\.key"},
+          "align": [
+            {
+              "test": "abs(scale('angular', datum['key.key'])) > PI / 2",
+              "value": "right"
+            },
+            {"value": "left"}
+          ],
+          "baseline": [
+            {"test": "scale('angular', datum['key.key']) > 0", "value": "top"},
+            {"test": "scale('angular', datum['key']) == 0", "value": "middle"},
+            {"value": "bottom"}
+          ],
+          "fill": {"value": "black"},
+          "fontWeight": {"value": "bold"}
+        }
+      }
+    },
+    {
+      "type": "line",
+      "name": "outer-line",
+      "from": {"data": "radial-grid"},
+      "encode": {
+        "enter": {
+          "interpolate": {"value": "linear-closed"},
+          "x": {"field": "x2"},
+          "y": {"field": "y2"},
+          "stroke": {"value": "lightgray"},
+          "strokeWidth": {"value": 1}
+        }
+      }
+    }
+  ]
+}
